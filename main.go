@@ -73,6 +73,25 @@ func getClient(config *oauth2.Config) *http.Client {
 	if err != nil {
 		tok = getTokenFromWeb(config)
 		saveToken(tokFile, tok)
+	} else {
+		// Check if token is expired and try to refresh
+		if tok.Expiry.Before(time.Now()) {
+			// If we have a refresh token, the oauth2 client will handle refresh automatically
+			// But if refresh fails, we need to re-authenticate
+			ctx := context.Background()
+			tokenSource := config.TokenSource(ctx, tok)
+			newTok, err := tokenSource.Token()
+			if err != nil {
+				log.Printf("Token refresh failed: %v", err)
+				log.Println("Re-authenticating...")
+				tok = getTokenFromWeb(config)
+				saveToken(tokFile, tok)
+			} else if newTok.AccessToken != tok.AccessToken {
+				// Token was refreshed, save the new token
+				tok = newTok
+				saveToken(tokFile, tok)
+			}
+		}
 	}
 	return config.Client(context.Background(), tok)
 }
