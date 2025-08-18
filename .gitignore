@@ -33,3 +33,5 @@ secrets
 # .vscode/
 
 outputs
+
+.DS_Store
