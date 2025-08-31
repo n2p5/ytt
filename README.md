@@ -56,6 +56,15 @@ go run main.go -output ~/Downloads abc123
 # Results in files like: abc123-My_Video_Title.txt
 ```
 
+### Edge Cases
+
+For video IDs that start with a dash (e.g., `-m8CDR_lHXo`), use `--` to separate flags from arguments:
+```bash
+go run main.go -- -m8CDR_lHXo
+```
+
+This tells the command parser that everything after `--` should be treated as arguments, not flags.
+
 ## First Run
 
 On first run, the tool will:
