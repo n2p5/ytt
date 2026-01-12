@@ -71,33 +71,37 @@ func Authenticate(oauthPath, tokenPath string) error {
 func getHTTPClient(config *oauth2.Config, tokenPath string) (*http.Client, error) {
 	tok, err := tokenFromFile(tokenPath)
 	if err != nil {
-		tok, err = getTokenFromWeb(config)
-		if err != nil {
+		return authenticateAndSave(config, tokenPath)
+	}
+
+	if !tok.Expiry.Before(time.Now()) {
+		return config.Client(context.Background(), tok), nil
+	}
+
+	tokenSource := config.TokenSource(context.Background(), tok)
+	newTok, err := tokenSource.Token()
+	if err != nil {
+		log.Printf("Token refresh failed: %v", err)
+		log.Println("Re-authenticating...")
+		return authenticateAndSave(config, tokenPath)
+	}
+
+	if newTok.AccessToken != tok.AccessToken {
+		if err := saveToken(tokenPath, newTok); err != nil {
 			return nil, err
 		}
-		if err := saveToken(tokenPath, tok); err != nil {
-			return nil, err
-		}
-	} else if tok.Expiry.Before(time.Now()) {
-		ctx := context.Background()
-		tokenSource := config.TokenSource(ctx, tok)
-		newTok, err := tokenSource.Token()
-		if err != nil {
-			log.Printf("Token refresh failed: %v", err)
-			log.Println("Re-authenticating...")
-			tok, err = getTokenFromWeb(config)
-			if err != nil {
-				return nil, err
-			}
-			if err := saveToken(tokenPath, tok); err != nil {
-				return nil, err
-			}
-		} else if newTok.AccessToken != tok.AccessToken {
-			tok = newTok
-			if err := saveToken(tokenPath, tok); err != nil {
-				return nil, err
-			}
-		}
+	}
+
+	return config.Client(context.Background(), newTok), nil
+}
+
+func authenticateAndSave(config *oauth2.Config, tokenPath string) (*http.Client, error) {
+	tok, err := getTokenFromWeb(config)
+	if err != nil {
+		return nil, err
+	}
+	if err := saveToken(tokenPath, tok); err != nil {
+		return nil, err
 	}
 	return config.Client(context.Background(), tok), nil
 }
@@ -128,11 +132,6 @@ func getTokenFromWeb(config *oauth2.Config) (*oauth2.Token, error) {
 	config.RedirectURL = "http://localhost:8080"
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 	fmt.Fprintf(os.Stderr, "Opening browser for authorization...\nIf it doesn't open automatically, go to: %v\n", authURL)
-
-	go func() {
-		time.Sleep(1 * time.Second)
-		fmt.Fprintf(os.Stderr, "Browser should open automatically. If not, please visit the URL above.\n")
-	}()
 
 	authCode := <-codeChan
 

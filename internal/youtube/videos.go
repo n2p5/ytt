@@ -146,39 +146,8 @@ func (c *Client) getUploadsPlaylistID(channelID string) (string, error) {
 	return channelResponse.Items[0].ContentDetails.RelatedPlaylists.Uploads, nil
 }
 
-// isShort checks if a video duration (ISO 8601 format) is under the minimum duration.
 func isShort(duration string, minDurationSeconds int) bool {
-	if !strings.HasPrefix(duration, "PT") {
-		return false
-	}
-	d := duration[2:]
-
-	var hours, minutes, seconds int
-	for len(d) > 0 {
-		i := 0
-		for i < len(d) && d[i] >= '0' && d[i] <= '9' {
-			i++
-		}
-		if i == 0 || i >= len(d) {
-			break
-		}
-		val := 0
-		for j := 0; j < i; j++ {
-			val = val*10 + int(d[j]-'0')
-		}
-		switch d[i] {
-		case 'H':
-			hours = val
-		case 'M':
-			minutes = val
-		case 'S':
-			seconds = val
-		}
-		d = d[i+1:]
-	}
-
-	totalSeconds := hours*3600 + minutes*60 + seconds
-	return totalSeconds < minDurationSeconds
+	return ParseDuration(duration) < minDurationSeconds
 }
 
 // ParseDuration parses ISO 8601 duration and returns total seconds.
