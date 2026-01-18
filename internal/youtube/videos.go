@@ -2,6 +2,7 @@ package youtube
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -30,6 +31,8 @@ type VideoDetails struct {
 
 // ListVideos retrieves all videos from a channel, filtering out shorts.
 func (c *Client) ListVideos(channelID string, minDurationSeconds int) ([]VideoInfo, error) {
+	debug := os.Getenv("YTT_DEBUG") != ""
+
 	if channelID == "" {
 		var err error
 		channelID, err = c.getAuthenticatedChannelID()
@@ -37,10 +40,16 @@ func (c *Client) ListVideos(channelID string, minDurationSeconds int) ([]VideoIn
 			return nil, err
 		}
 	}
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Channel ID: %s\n", channelID)
+	}
 
 	uploadsPlaylistID, err := c.getUploadsPlaylistID(channelID)
 	if err != nil {
 		return nil, err
+	}
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Uploads playlist ID: %s\n", uploadsPlaylistID)
 	}
 
 	videos := []VideoInfo{}
@@ -58,6 +67,9 @@ func (c *Client) ListVideos(channelID string, minDurationSeconds int) ([]VideoIn
 		if err != nil {
 			return nil, fmt.Errorf("error retrieving playlist items: %w", err)
 		}
+		if debug {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Playlist returned %d items\n", len(playlistResponse.Items))
+		}
 
 		var videoIDs []string
 		for _, item := range playlistResponse.Items {
@@ -65,14 +77,25 @@ func (c *Client) ListVideos(channelID string, minDurationSeconds int) ([]VideoIn
 		}
 
 		if len(videoIDs) > 0 {
+			if debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Fetching details for video IDs: %v\n", videoIDs)
+			}
 			videosCall := c.Service.Videos.List([]string{"snippet", "statistics", "contentDetails"}).
 				Id(strings.Join(videoIDs, ","))
 			videosResponse, err := videosCall.Do()
 			if err != nil {
 				return nil, fmt.Errorf("error retrieving video statistics: %w", err)
 			}
+			if debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Videos.List returned %d items\n", len(videosResponse.Items))
+			}
 
 			for _, video := range videosResponse.Items {
+				duration := ParseDuration(video.ContentDetails.Duration)
+				if debug {
+					fmt.Fprintf(os.Stderr, "[DEBUG] Video %s: duration=%s (%ds), minDuration=%d, isShort=%v\n",
+						video.Id, video.ContentDetails.Duration, duration, minDurationSeconds, duration < minDurationSeconds)
+				}
 				if isShort(video.ContentDetails.Duration, minDurationSeconds) {
 					continue
 				}
@@ -91,6 +114,9 @@ func (c *Client) ListVideos(channelID string, minDurationSeconds int) ([]VideoIn
 		}
 	}
 
+	if debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Returning %d videos after filtering\n", len(videos))
+	}
 	return videos, nil
 }
 
@@ -123,13 +149,18 @@ func (c *Client) GetVideoDetails(videoID string) (*VideoDetails, error) {
 }
 
 func (c *Client) getAuthenticatedChannelID() (string, error) {
-	channelsCall := c.Service.Channels.List([]string{"id"}).Mine(true)
+	channelsCall := c.Service.Channels.List([]string{"id", "statistics"}).Mine(true)
 	channelsResponse, err := channelsCall.Do()
 	if err != nil {
 		return "", fmt.Errorf("error retrieving user's channel: %w", err)
 	}
 	if len(channelsResponse.Items) == 0 {
 		return "", fmt.Errorf("no channel found for authenticated user")
+	}
+	if os.Getenv("YTT_DEBUG") != "" {
+		stats := channelsResponse.Items[0].Statistics
+		fmt.Fprintf(os.Stderr, "[DEBUG] Channel stats: %d videos, %d subscribers\n",
+			stats.VideoCount, stats.SubscriberCount)
 	}
 	return channelsResponse.Items[0].Id, nil
 }
