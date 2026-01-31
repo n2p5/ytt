@@ -8,10 +8,11 @@ import (
 
 // VideoInfo represents metadata for a YouTube video.
 type VideoInfo struct {
-	VideoID   string `json:"video_id"`
-	Title     string `json:"title"`
-	ViewCount uint64 `json:"view_count"`
-	Date      string `json:"published_at"`
+	VideoID     string `json:"video_id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	ViewCount   uint64 `json:"view_count"`
+	Date        string `json:"published_at"`
 }
 
 // VideoDetails represents detailed metadata for a YouTube video.
@@ -30,7 +31,7 @@ type VideoDetails struct {
 }
 
 // ListVideos retrieves all videos from a channel, filtering out shorts.
-func (c *Client) ListVideos(channelID string, minDurationSeconds int) ([]VideoInfo, error) {
+func (c *Client) ListVideos(channelID string, minDurationSeconds int, includeDescription bool) ([]VideoInfo, error) {
 	debug := os.Getenv("YTT_DEBUG") != ""
 
 	if channelID == "" {
@@ -99,12 +100,16 @@ func (c *Client) ListVideos(channelID string, minDurationSeconds int) ([]VideoIn
 				if isShort(video.ContentDetails.Duration, minDurationSeconds) {
 					continue
 				}
-				videos = append(videos, VideoInfo{
+				info := VideoInfo{
 					VideoID:   video.Id,
 					Title:     video.Snippet.Title,
 					ViewCount: video.Statistics.ViewCount,
 					Date:      video.Snippet.PublishedAt,
-				})
+				}
+				if includeDescription {
+					info.Description = video.Snippet.Description
+				}
+				videos = append(videos, info)
 			}
 		}
 
